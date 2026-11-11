@@ -224,29 +224,81 @@ function render(){
   if(chat)chat.messages.forEach(m=>addMessage(m.role,m.content));
   $("area").scrollTop=$("area").scrollHeight;
 }
-function sendMessage(){
+
+async function sendMessage(){
   const content=input.value.trim();
   if(!content||busy)return;
   if(!active)createChat();
-  const chat=current();if(!chat)return;
+
+  const chat=current();
+  if(!chat)return;
+
   chat.messages.push({role:"user",content});
-  if(chat.title==="New conversation")chat.title=content.slice(0,30)+(content.length>30?"...":"");
-  input.value="";input.style.height="auto";save();render();
-  busy=true;$("send").disabled=true;
+
+  if(chat.title==="New conversation"){
+    chat.title=content.slice(0,30)+(content.length>30?"...":"");
+  }
+
+  input.value="";
+  input.style.height="auto";
+  save();
+  render();
+
+  busy=true;
+  $("send").disabled=true;
+
   const typing=document.createElement("div");
-  typing.className="message assistant";typing.id="typing";
+  typing.className="message assistant";
+  typing.id="typing";
   typing.innerHTML='<div class="avatar">N</div><div class="message-content"><div class="message-name">NOVA</div><div class="typing"><span></span><span></span><span></span></div></div>';
+
   $("messages").appendChild(typing);
   $("area").scrollTop=$("area").scrollHeight;
-  setTimeout(()=>{
-    $("typing")?.remove();
+
+  try{
+    const response=await fetch(
+      "https://nova-ai.asafdrine141.workers.dev/",
+      {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          messages:chat.messages.map(m=>({
+            role:m.role,
+            content:m.content
+          }))
+        })
+      }
+    );
+
+    const data=await response.json();
+
+    if(!response.ok){
+      throw new Error(data.error||"Server error: "+response.status);
+    }
+
+    if(!data.reply){
+      throw new Error("The AI returned an empty response.");
+    }
+
     chat.messages.push({
       role:"assistant",
-      content:"I'm currently in preview mode. My real AI model has not been connected yet. Your message has been saved! In Stage 2, I'll connect to a real AI model so I can understand your questions and respond intelligently."
+      content:data.reply
     });
-    busy=false;$("send").disabled=false;save();render();
-  },1100);
+
+  }catch(error){
+    chat.messages.push({
+      role:"assistant",
+      content:"I couldn't connect to my AI right now. Please try again. Details: "+error.message
+    });
+  }finally{
+    $("typing")?.remove();
+    busy=false;
+    $("send").disabled=false;
+    save();
+    render();
+  }
 }
+
 $("newChat").onclick=createChat;
 $("send").onclick=sendMessage;
 input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage()}};
